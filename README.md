@@ -12,7 +12,12 @@
 
 ### 1、预训练数据
 
-本项目一共收集了20B tokens左右的数据，包括[中文维基百科](Qwen/Qwen2.5-1.5B-Instruct)和[WuDaoCorpora语料库](https://huggingface.co/datasets/pleisto/wikipedia-cn-20230720-filtered)中随机抽取了部分数据
+本项目一共收集了50B tokens左右的数据，包括[中文维基百科](Qwen/Qwen2.5-1.5B-Instruct)和[WuDaoCorpora语料库](https://huggingface.co/datasets/pleisto/wikipedia-cn-20230720-filtered)中随机抽取了部分数据
+
+| 中文预训练语料                                               | 描述                   |
+| ------------------------------------------------------------ | ---------------------- |
+| [中文维基百科](Qwen/Qwen2.5-1.5B-Instruct)                   | 中文Wikipedia的数据    |
+| [WuDaoCorpora语料库](https://huggingface.co/datasets/pleisto/wikipedia-cn-20230720-filtered) | 中文悟道开源的200G数据 |
 
 这两个数据都相对比较干净，因此不做进一步清洗，只对格式进行调整和整理
 
@@ -28,11 +33,21 @@
 
 ### 2、SFT数据
 
+| SFT语料                                                      | 描述                                                         |
+| ------------------------------------------------------------ | ------------------------------------------------------------ |
+| [identity中文自我认知数据](https://github.com/hiyouga/LLaMA-Factory/blob/main/data/identity.json) | 使用了llamafactory提供的模型自我认知数据的中文部分，大概75条数据 |
+| [BELLE 2M](https://huggingface.co/datasets/BelleGroup/train_2M_CN) | 源自BelleGroup的一部分SFT数据，大概200W条                    |
+| [Alpaca-gpt4-zh](https://huggingface.co/datasets/llamafactory/alpaca_gpt4_zh) | 参考Alpaca方法基于GPT4得到的self-instruct数据，约5W条，llamafactory去掉了6103条错误的数据 |
+
+SFT的语料一般较小，没有必要提前分词，而是在构建Dataloader的时候进行分词。
+
 ### 3、强化学习数据
+
+
 
 ## 二、模型架构
 
-本项目的显卡为单机2张A40，资源有限，所以考虑训练小于1B的模型，对于小模型的架构问题，参考了以下几篇资料：
+本项目的显卡为单机2张A40，资源有限，所以考虑训练小于1B的模型，对于小模型的架构问题，可参考以下几篇资料：
 
 - Rethinking Optimization and Architecture for Tiny Language Models，解读：[https://zhuanlan.zhihu.com/p/681614203](https://zhuanlan.zhihu.com/p/681614203)
 - 一篇叫做 [MobileLLM](https://openreview.net/pdf?id=EIGbXbxcUQ) 的 paper，介绍了一些训练小模型的 trick
@@ -44,18 +59,37 @@
 - 多轮训练，不同于大模型一般训练一个epoch，小模型可能需要多个epoch
 - 其他减少模型大小但相对不失模型性能的结构：tied word embedding、GQA、layer级别的参数共享
 
-由于本项目首先想先快速实现一个模型，所以目前上述因素没有都纳入考虑，最终模型结构参考了qwen2.5-0.5B的结构，具体如下
+由于本项目首先想先快速实现一个模型，所以目前上述因素没有都纳入考虑，具体如下
 
 ```
-tokenizer：qwen2.5的词表，151644大小
+tokenizer：qwen2.5的词表，151650大小
 Tied word embedding
 ROPE
 SwiGLU
 RMSNorm
 Attention QKV bias
-n_layers：24
-GQA：14个Q头，2个KV头
-dim:896
-max_len:512
 ```
 
+训练模型具体参数如下所示：
+
+| 模型名称      | 模型参数                                                     |
+| ------------- | ------------------------------------------------------------ |
+| NanoChat-0.3B | max_len=512<br />dim=512<br />n_layers=24<br />v_head=14<br />kv_head=2 |
+
+## 三、模型训练
+
+对于小模型来说，deepspeed已经足够了，训练部分代码都是了accelerate库来简化了分布式训练代码，并集成了deepspeed，支持了断点续训
+
+```
+单卡训练：python train_pretrain.py
+多卡训练DDP：accelerate launch train_pretrain.py
+多卡训练DeepSpeed：accelerate launch --config_file ds_zero2.yaml train_pretrain.py
+```
+
+## 四、模型权重
+
+NanoChat-0.3B-base（[huggingface](https://huggingface.co/xueyunlong/NanoChat-0.3B-base/tree/main)|[modelscope](https://modelscope.cn/models/xueyunlong/NanoChat-0.3B-base/files))
+
+NanoChat-0.3B-instruction（[huggingface](https://huggingface.co/xueyunlong/NanoChat-0.3B-instruct/tree/main)|[modelscope](https://modelscope.cn/models/xueyunlong/NanoChat-0.3B-instruct/files)）
+
+## 五、模型测试结果
