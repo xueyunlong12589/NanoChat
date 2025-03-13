@@ -11,6 +11,7 @@ import torch.nn.functional as F
 from torch import nn
 from transformers import PreTrainedModel
 from transformers.modeling_outputs import CausalLMOutputWithPast
+from flash_attn import flash_attn_qkvpacked_func, flash_attn_func
 
 
 class RMSNorm(torch.nn.Module):
@@ -113,6 +114,12 @@ class GQA(nn.Module):
                 dropout_p=dropout_p,
                 is_causal=True
             )
+            # output =flash_attn_func(
+            #     xq, xk, xv,
+            #     dropout_p=dropout_p,
+            #     softmax_scale=self.softmax_scale,
+            #     causal=True
+            # )
         else:
             scores = (xq @ xk.transpose(-2, -1)) / math.sqrt(self.head_dim)
             scores += self.mask[:, :, :seq_len, :seq_len]
@@ -422,16 +429,16 @@ class NanoChatLM(PreTrainedModel):
 
     @torch.inference_mode()
     def generate(self, input_ids, eos_token_id=151643, max_new_tokens=1024, temperature=0.75, top_p=0.90,
-                 stream=False, rp=1., use_cache=True, pad_token_id=0, **args):
+                stream=False, rp=1., use_cache=True, pad_token_id=0, do_sample=True, **args):
         # 流式生成
         if stream:
-            return self._generate_stream(input_ids, eos_token_id, max_new_tokens, temperature, top_p, rp, use_cache)
+            return self._generate_stream(input_ids, eos_token_id, max_new_tokens, temperature, top_p, rp, use_cache, do_sample)
 
         # 直接生成
         generated = []
         for i in range(input_ids.size(0)):
             non_pad = input_ids[i][input_ids[i] != pad_token_id].unsqueeze(0)
-            out = self._generate_stream(non_pad, eos_token_id, max_new_tokens, temperature, top_p, rp, use_cache)
+            out = self._generate_stream(non_pad, eos_token_id, max_new_tokens, temperature, top_p, rp, use_cache, do_sample)
             tokens_list = [tokens[:, -1:] for tokens in out]
             gen = torch.cat(tokens_list, dim=-1) if tokens_list else non_pad
             full_sequence = torch.cat([non_pad, gen], dim=-1)
@@ -445,14 +452,14 @@ class NanoChatLM(PreTrainedModel):
         ]
         return torch.cat(generated, dim=0)
 
-    def _generate_stream(self, input_ids, eos_token_id, max_new_tokens, temperature, top_p, rp, use_cache, **args):
+    def _generate_stream(self, input_ids, eos_token_id, max_new_tokens, temperature, top_p, rp, use_cache, do_sample, **args):
         start, first_seq, past_kvs = input_ids.shape[1], True, None
         while input_ids.shape[1] < max_new_tokens - 1:
             if first_seq or not use_cache:
                 out, first_seq = self(input_ids, past_key_values=past_kvs, use_cache=use_cache), False
             else:
                 out = self(input_ids[:, -1:], past_key_values=past_kvs, use_cache=use_cache,
-                           start_pos=input_ids.shape[1] - 1)
+                        start_pos=input_ids.shape[1] - 1)
             logits, past_kvs = out.logits[:, -1, :], out.past_key_values
             logits[:, list(set(input_ids.tolist()[0]))] /= rp
             logits /= (temperature + 1e-9)
@@ -465,7 +472,13 @@ class NanoChatLM(PreTrainedModel):
                 sorted_indices_to_remove[:, 0] = False
                 indices_to_remove = sorted_indices_to_remove.scatter(1, sorted_indices, sorted_indices_to_remove)
                 logits[indices_to_remove] = -float('Inf')
-            input_ids_next = torch.multinomial(F.softmax(logits, dim=-1), num_samples=1)
+            
+            if do_sample:
+                input_ids_next = torch.multinomial(F.softmax(logits, dim=-1), num_samples=1)
+            else:
+                # Greedy decoding: choose the token with the highest probability
+                input_ids_next = torch.argmax(F.softmax(logits, dim=-1), dim=-1).unsqueeze(-1)
+                
             input_ids = torch.cat((input_ids, input_ids_next), dim=1)
             yield input_ids[:, start:]
             if input_ids_next.item() == eos_token_id:

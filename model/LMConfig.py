@@ -46,6 +46,7 @@ class LMConfig(PretrainedConfig):
             norm_topk_prob: bool = True,
             **kwargs,
     ):
+        super().__init__(**kwargs)
         self.dim = dim
         self.n_layers = n_layers
         self.tie_word_embeddings = tie_word_embeddings
@@ -80,4 +81,4 @@ class LMConfig(PretrainedConfig):
         self.aux_loss_alpha = aux_loss_alpha  # 辅助损失的alpha参数
         self.seq_aux = seq_aux  # 是否在序列级别上计算辅助损失
         self.norm_topk_prob = norm_topk_prob  # 是否标准化top-k概率
-        super().__init__(**kwargs)
+        
