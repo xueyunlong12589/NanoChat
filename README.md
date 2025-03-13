@@ -7,9 +7,14 @@
 包括：数据收集与整理 -> 预训练 ->指令微调 ->强化学习，在新技术出来后，并补充相关内容
 
 主要的是将代码和流程跑通，达到一个可对话的效果，目前不追求更优效果和榜单。
+
+------
+
 ### 更新日志
 
 2025.3.13  模型支持了deepseek的MLA和MOE，模型加紧训练中
+
+------
 
 ## 一、训练数据
 
@@ -152,3 +157,13 @@ Qwen-0.5B-instruct：'老年人预防骨质疏松，可以采取以下措施：\
 **NanoChat和qwen对比：**
 
 在一些开放式问题，或者事实性问题上问，看起来是不会出错。但是NanoChat在数学问题上是灾难性的，1+1时能算出来的，再复杂一点就开始胡编乱造了，即使关了采样取概率最高的词也是如此，可能是样本中数学相关的样本太少了。反观qwen，铿锵有力，直接给出了答案hhh
+
+------
+
+**参考链接 & 感谢一下优秀的论文或项目**
+
+- https://github.com/jingyaogong/minimind
+- https://github.com/DLLXW/baby-llama2-chinese
+- https://github.com/charent/Phi2-mini-Chinese
+- https://github.com/AI-Study-Han/Zero-Chatgpt
+- https://github.com/wangru8080/LLM_Trainer
